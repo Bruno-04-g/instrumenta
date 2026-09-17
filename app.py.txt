@@ -1,0 +1,87 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import streamlit as st
+
+st.set_page_config(page_title="Calibração de Célula de Carga", layout="wide")
+
+st.title("⚙️ Aplicativo de Calibração Estática - Célula de Carga")
+st.markdown("---")
+
+# ==========================================
+# MÓDULO 1: ENTRADA DE DADOS
+# ==========================================
+st.sidebar.header("1. Entrada de Dados")
+
+# Dados padrões
+cargas = np.array([0, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500])
+y20_padrao = np.array(
+    [0.0, 130.0, 161.0, 189.0, 1122.0, 1148.0, 1180.0, 1211.0, 1241.0, 1269.0, 1300.0]
+)
+y35_padrao = np.array(
+    [15.0, 149.0, 177.0, 208.0, 1137.0, 1178.0, 1197.0, 1228.0, 1259.0, 1288.0, 1345.0]
+)
+
+T_nom = st.sidebar.number_input("Temperatura Nominal (°C)", value=20.0)
+T_calib = st.sidebar.number_input("Temperatura de Calibração (°C)", value=35.0)
+
+st.sidebar.subheader("Ensaio Prático")
+y_lido = st.sidebar.number_input("Leitura Medida (mV)", value=1220.0)
+T_medida = st.sidebar.number_input("Temperatura do Ambiente (°C)", value=28.0)
+
+# ==========================================
+# MÓDULO 2: PROCESSAMENTO
+# ==========================================
+delta_T_calib = T_calib - T_nom
+K0 = y20_padrao[-1] / cargas[-1]  # mV/kgf
+Ki = (y35_padrao[0] - y20_padrao[0]) / delta_T_calib  # mV/°C
+K35 = (y35_padrao[-1] - y35_padrao[0]) / cargas[-1]
+Km = (K35 - K0) / delta_T_calib  # (mV/kgf)/°C
+
+# Aplicação prática a T_medida
+delta_T_medida = T_medida - T_nom
+P_real = (y_lido - Ki * delta_T_medida) / (K0 + Km * delta_T_medida)
+P_indicado = y_lido / K0
+
+E_int = (Ki * delta_T_medida) / K0
+E_mod = (Km * delta_T_medida * P_real) / K0
+E_total = P_indicado - P_real
+
+# ==========================================
+# MÓDULO 3: SAÍDA DE DADOS
+# ==========================================
+col1, col2 = st.columns(2)
+
+with col1:
+  st.subheader("📊 Parâmetros do Instrumento")
+  st.write(f"**Sensibilidade Estática Nominal ($K_0$):** {K0:.4f} mV/kgf")
+  st.write(f"**Ganho Interferente ($K_i$):** {Ki:.4f} mV/°C")
+  st.write(f"**Ganho Modificante ($K_m$):** {Km:.6f} (mV/kgf)/°C")
+
+  st.subheader("🎯 Resultado do Ensaio ($28°C$)")
+  st.metric("Peso Real Estimado", f"{P_real:.3f} kgf")
+  st.metric("Peso Lido sem Correção", f"{P_indicado:.3f} kgf")
+  st.metric("Erro Global Total", f"{E_total:.3f} kgf")
+
+with col2:
+  st.subheader("📉 Decomposição do Erro")
+  st.write(
+      f"- **Parcela Interferente (Zero):** {E_int:.3f} kgf"
+      f" ({(E_int/E_total)*100:.1f}%)"
+  )
+  st.write(
+      f"- **Parcela Modificante (Sensibilidade):** {E_mod:.3f} kgf"
+      f" ({(E_mod/E_total)*100:.1f}%)"
+  )
+
+  # Gráfico
+  fig, ax = plt.subplots(figsize=(6, 4))
+  ax.plot(cargas, y20_padrao, "o-", label="20°C (Nominal)")
+  ax.plot(cargas, y35_padrao, "s-", label="35°C")
+  ax.axhline(
+      y=y_lido, color="r", linestyle="--", label=f"Leitura ({y_lido} mV)"
+  )
+  ax.set_xlabel("Carga (kgf)")
+  ax.set_ylabel("Deflexão (mV)")
+  ax.legend()
+  ax.grid(True)
+  st.pyplot(fig)
